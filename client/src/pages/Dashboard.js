@@ -126,88 +126,86 @@ const Dashboard = () => {
       </div>
 
       {/* Main Chart Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="mb-8">
         {/* Chart */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {selectedCoin} Price Chart
-                </h2>
-                <p className="text-sm text-gray-500">
-                  {timeframe} day historical data
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowMovingAverages(!showMovingAverages)}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    showMovingAverages
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  <Activity className="w-4 h-4 inline mr-1" />
-                  MA
-                </button>
-                <button
-                  onClick={() => setChartType(chartType === 'line' ? 'candlestick' : 'line')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    chartType === 'candlestick'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  <BarChart3 className="w-4 h-4 inline mr-1" />
-                  {chartType === 'line' ? 'Candles' : 'Line'}
-                </button>
-                <div className="flex border border-gray-300 rounded-md">
-                  {timeframes.map((tf) => (
-                    <button
-                      key={tf.value}
-                      onClick={() => setTimeframe(tf.value)}
-                      className={`px-3 py-1 text-sm transition-colors ${
-                        timeframe === tf.value
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {tf.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {selectedCoin} Price Chart
+              </h2>
+              <p className="text-sm text-gray-500">
+                {timeframe} day historical data
+              </p>
             </div>
-
-            <div className="h-80">
-              <UnifiedChart
-                historicalData={historicalData}
-                candlestickData={candlestickData}
-                historicalMovingAverages={historicalMovingAverages}
-                showMovingAverages={showMovingAverages}
-                coinSymbol={selectedCoin}
-                chartType={chartType}
-              />
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowMovingAverages(!showMovingAverages)}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  showMovingAverages
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                <Activity className="w-4 h-4 inline mr-1" />
+                MA
+              </button>
+              <button
+                onClick={() => setChartType(chartType === 'line' ? 'candlestick' : 'line')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  chartType === 'candlestick'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 inline mr-1" />
+                {chartType === 'line' ? 'Candles' : 'Line'}
+              </button>
+              <div className="flex border border-gray-300 rounded-md">
+                {timeframes.map((tf) => (
+                  <button
+                    key={tf.value}
+                    onClick={() => setTimeframe(tf.value)}
+                    className={`px-3 py-1 text-sm transition-colors ${
+                      timeframe === tf.value
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Moving Averages */}
-          <MovingAveragesCard
-            movingAverages={movingAverages.find(ma => ma.symbol === selectedCoin)}
-            coinSymbol={selectedCoin}
-          />
-
-          {/* Trading Form */}
-          <TradingForm
-            selectedCoin={selectedCoin}
-            currentPrice={prices.find(p => p.symbol === selectedCoin)?.price}
-            onTransactionComplete={fetchData}
-          />
+          <div className="h-96">
+            <UnifiedChart
+              historicalData={historicalData}
+              candlestickData={candlestickData}
+              historicalMovingAverages={historicalMovingAverages}
+              showMovingAverages={showMovingAverages}
+              coinSymbol={selectedCoin}
+              chartType={chartType}
+            />
+          </div>
         </div>
+      </div>
+
+      {/* Sidebar - Now below the chart */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Moving Averages */}
+        <MovingAveragesCard
+          movingAverages={movingAverages.find(ma => ma.symbol === selectedCoin)}
+          coinSymbol={selectedCoin}
+        />
+
+        {/* Trading Form */}
+        <TradingForm
+          selectedCoin={selectedCoin}
+          currentPrice={prices.find(p => p.symbol === selectedCoin)?.price}
+          onTransactionComplete={fetchData}
+        />
       </div>
     </div>
   );

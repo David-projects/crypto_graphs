@@ -99,11 +99,15 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     const priceRangeTotal = maxPrice - minPrice;
 
     // Chart dimensions
-    const width = 800;
-    const height = 300;
-    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+    const width = 1200; // Increased width for full screen
+    const height = 400; // Increased height to accommodate volume
+    const margin = { top: 20, right: 30, bottom: 80, left: 60 }; // Increased bottom margin for volume
     const chartWidth = width - margin.left - margin.right;
     const chartHeight = height - margin.top - margin.bottom;
+    
+    // Volume chart dimensions
+    const volumeHeight = 80; // Height for volume bars
+    const priceChartHeight = chartHeight - volumeHeight - 20; // Remaining height for price chart
 
     // Calculate candlestick dimensions
     const candleWidth = Math.max(2, chartWidth / candlestickData.length * 0.8);
@@ -111,12 +115,24 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
 
     // Helper function to convert price to Y coordinate
     const priceToY = (price) => {
-      return margin.top + chartHeight - ((price - minPrice) / priceRangeTotal) * chartHeight;
+      return margin.top + priceChartHeight - ((price - minPrice) / priceRangeTotal) * priceChartHeight;
     };
 
     // Helper function to convert index to X coordinate
     const indexToX = (index) => {
       return margin.left + index * candleSpacing + candleSpacing / 2;
+    };
+
+    // Calculate volume range for scaling
+    const volumeRange = {
+      min: 0,
+      max: Math.max(...candlestickData.map(d => d.volume))
+    };
+
+    // Helper function to convert volume to Y coordinate for volume bars
+    const volumeToY = (volume) => {
+      const volumeY = margin.top + priceChartHeight + 20 + volumeHeight;
+      return volumeY - (volume / volumeRange.max) * volumeHeight;
     };
 
     const CustomTooltip = ({ x, y, data }) => {
@@ -126,29 +142,32 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
         <g>
           <rect
             x={x + 10}
-            y={y - 80}
+            y={y - 100}
             width={120}
-            height={100}
+            height={120}
             fill="white"
             stroke="#e5e7eb"
             strokeWidth={1}
             rx={4}
             filter="drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))"
           />
-          <text x={x + 20} y={y - 60} fontSize="12" fontWeight="bold" fill="#374151">
+          <text x={x + 20} y={y - 80} fontSize="12" fontWeight="bold" fill="#374151">
             {formatDate(data.date)}
           </text>
-          <text x={x + 20} y={y - 45} fontSize="10" fill="#6b7280">
+          <text x={x + 20} y={y - 65} fontSize="10" fill="#6b7280">
             Open: <tspan fontWeight="500" fill="#374151">{formatPrice(data.open)}</tspan>
           </text>
-          <text x={x + 20} y={y - 30} fontSize="10" fill="#6b7280">
+          <text x={x + 20} y={y - 50} fontSize="10" fill="#6b7280">
             High: <tspan fontWeight="500" fill="#374151">{formatPrice(data.high)}</tspan>
           </text>
-          <text x={x + 20} y={y - 15} fontSize="10" fill="#6b7280">
+          <text x={x + 20} y={y - 35} fontSize="10" fill="#6b7280">
             Low: <tspan fontWeight="500" fill="#374151">{formatPrice(data.low)}</tspan>
           </text>
-          <text x={x + 20} y={y} fontSize="10" fill="#6b7280">
+          <text x={x + 20} y={y - 20} fontSize="10" fill="#6b7280">
             Close: <tspan fontWeight="500" fill="#374151">{formatPrice(data.close)}</tspan>
+          </text>
+          <text x={x + 20} y={y - 5} fontSize="10" fill="#6b7280">
+            Volume: <tspan fontWeight="500" fill="#374151">{data.volume?.toLocaleString() || 'N/A'}</tspan>
           </text>
         </g>
       );
@@ -159,7 +178,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
         <svg width={width} height={height} className="w-full h-full">
           {/* Grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-            const y = margin.top + ratio * chartHeight;
+            const y = margin.top + ratio * priceChartHeight;
             const price = maxPrice - ratio * priceRangeTotal;
             return (
               <g key={i}>
@@ -227,6 +246,49 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
               </g>
             );
           })}
+
+          {/* Volume Bars */}
+          {candlestickData.map((candle, index) => {
+            const x = indexToX(index);
+            const isGreen = candle.close >= candle.open;
+            const volumeBarHeight = (candle.volume / volumeRange.max) * volumeHeight;
+            const volumeBarY = margin.top + priceChartHeight + 20 + volumeHeight - volumeBarHeight;
+            
+            return (
+              <rect
+                key={`volume-${index}`}
+                x={x - candleWidth / 2}
+                y={volumeBarY}
+                width={candleWidth}
+                height={Math.max(1, volumeBarHeight)}
+                fill={isGreen ? '#10b981' : '#ef4444'}
+                opacity={0.6}
+              />
+            );
+          })}
+
+          {/* Volume Chart Border */}
+          <rect
+            x={margin.left}
+            y={margin.top + priceChartHeight + 20}
+            width={chartWidth}
+            height={volumeHeight}
+            fill="none"
+            stroke="#e5e7eb"
+            strokeWidth={1}
+          />
+
+          {/* Volume Label */}
+          <text
+            x={margin.left - 10}
+            y={margin.top + priceChartHeight + 20 + volumeHeight / 2}
+            textAnchor="end"
+            fontSize="10"
+            fill="#6b7280"
+            transform={`rotate(-90 ${margin.left - 10} ${margin.top + priceChartHeight + 20 + volumeHeight / 2})`}
+          >
+            Volume
+          </text>
 
           {/* Moving Average Lines */}
           {showMovingAverages && alignedMovingAverages && alignedMovingAverages.length > 0 && (
