@@ -8,7 +8,10 @@ const PriceCard = ({ price, onClick, isSelected }) => {
   useEffect(() => {
     if (previousPrice && price?.price) {
       const change = ((price.price - previousPrice) / previousPrice) * 100;
-      setPriceChange(change);
+      // Only update if the change is significant (more than 0.001% to avoid floating point issues)
+      if (Math.abs(change) > 0.001) {
+        setPriceChange(change);
+      }
     }
     setPreviousPrice(price?.price);
   }, [price?.price, previousPrice]);
@@ -34,7 +37,21 @@ const PriceCard = ({ price, onClick, isSelected }) => {
 
   const formatChange = (change) => {
     const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(2)}%`;
+    // Show more decimal places for small changes to make them visible
+    if (Math.abs(change) < 0.01) {
+      return `${sign}${change.toFixed(4)}%`;
+    } else if (Math.abs(change) < 0.1) {
+      return `${sign}${change.toFixed(3)}%`;
+    } else {
+      return `${sign}${change.toFixed(2)}%`;
+    }
+  };
+
+  const formatPriceDifference = (currentPrice, previousPrice) => {
+    if (!currentPrice || !previousPrice) return '';
+    const difference = currentPrice - previousPrice;
+    const sign = difference >= 0 ? '+' : '';
+    return `${sign}$${Math.abs(difference).toFixed(2)}`;
   };
 
   const getChangeColor = (change) => {
@@ -85,18 +102,23 @@ const PriceCard = ({ price, onClick, isSelected }) => {
             <div className={`text-sm font-medium ${getChangeColor(priceChange)}`}>
               {formatChange(priceChange)}
             </div>
+            {previousPrice && price?.price && Math.abs(priceChange) > 0.001 && (
+              <div className={`text-xs ${getChangeColor(priceChange)}`}>
+                {formatPriceDifference(price.price, previousPrice)}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {priceChange > 0 ? (
+            {priceChange > 0.001 ? (
               <TrendingUp className="w-4 h-4 text-green-600" />
-            ) : priceChange < 0 ? (
+            ) : priceChange < -0.001 ? (
               <TrendingDown className="w-4 h-4 text-red-600" />
             ) : null}
             <span className={`text-sm font-medium ${getChangeColor(priceChange)}`}>
-              {priceChange > 0 ? 'Up' : priceChange < 0 ? 'Down' : 'No change'}
+              {priceChange > 0.001 ? 'Up' : priceChange < -0.001 ? 'Down' : 'No change'}
             </span>
           </div>
           <div className={`px-2 py-1 rounded-full text-xs font-medium ${getChangeBgColor(priceChange)} ${getChangeColor(priceChange)}`}>

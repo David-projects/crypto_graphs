@@ -18,6 +18,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showMovingAverages, setShowMovingAverages] = useState(true);
   const [chartType, setChartType] = useState('line'); // 'line' or 'candlestick'
+  const [lastUpdated, setLastUpdated] = useState(new Date());
 
   const timeframes = [
     { value: 1, label: '1D' },
@@ -39,6 +40,7 @@ const Dashboard = () => {
     try {
       const response = await axios.get(`/api/crypto/candlesticks/${selectedCoin}?limit=${timeframe}`);
       setCandlestickData(response.data.candlestickData);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching candlestick data:', error);
     }
@@ -48,6 +50,7 @@ const Dashboard = () => {
     try {
       const response = await axios.get(`/api/crypto/historical-moving-averages/${selectedCoin}?days=${timeframe}&periods=5,9,15`);
       setHistoricalMovingAverages(response.data.historicalMovingAverages);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching historical moving averages:', error);
     }
@@ -78,6 +81,7 @@ const Dashboard = () => {
     try {
       const response = await axios.get('/api/crypto/prices');
       setPrices(response.data.prices);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching prices:', error);
     }
@@ -85,9 +89,17 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchPrices, 30000); // Update prices every 30 seconds
-    return () => clearInterval(interval);
-  }, [fetchData, fetchPrices]);
+    // Update all data every 30 seconds for more frequent updates
+    const priceInterval = setInterval(fetchPrices, 30000);
+    const candlestickInterval = setInterval(fetchCandlestickData, 30000);
+    const movingAverageInterval = setInterval(fetchHistoricalMovingAverages, 30000);
+    
+    return () => {
+      clearInterval(priceInterval);
+      clearInterval(candlestickInterval);
+      clearInterval(movingAverageInterval);
+    };
+  }, [fetchData, fetchPrices, fetchCandlestickData, fetchHistoricalMovingAverages]);
 
   useEffect(() => {
     fetchHistoricalData();
@@ -135,7 +147,7 @@ const Dashboard = () => {
                 {selectedCoin} Price Chart
               </h2>
               <p className="text-sm text-gray-500">
-                {timeframe} day historical data
+                {timeframe} day historical data • Last updated: {lastUpdated.toLocaleTimeString()}
               </p>
             </div>
             <div className="flex items-center space-x-2">
