@@ -1,30 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-} from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Activity } from 'lucide-react';
+import { Activity, BarChart3 } from 'lucide-react';
 import PriceCard from '../components/PriceCard';
 import MovingAveragesCard from '../components/MovingAveragesCard';
 import TradingForm from '../components/TradingForm';
+import UnifiedChart from '../components/UnifiedChart';
 
 const Dashboard = () => {
   const [prices, setPrices] = useState([]);
   const [movingAverages, setMovingAverages] = useState([]);
   const [historicalData, setHistoricalData] = useState([]);
+  const [candlestickData, setCandlestickData] = useState([]);
+  const [historicalMovingAverages, setHistoricalMovingAverages] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState('BTC');
   const [timeframe, setTimeframe] = useState(30);
   const [loading, setLoading] = useState(true);
   const [showMovingAverages, setShowMovingAverages] = useState(true);
+  const [chartType, setChartType] = useState('line'); // 'line' or 'candlestick'
 
   const timeframes = [
     { value: 1, label: '1D' },
@@ -33,17 +26,34 @@ const Dashboard = () => {
     { value: 90, label: '90D' },
   ];
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchPrices, 30000); // Update prices every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    fetchHistoricalData();
+  const fetchHistoricalData = useCallback(async () => {
+    try {
+      const response = await axios.get(`/api/crypto/historical/${selectedCoin}?days=${timeframe}`);
+      setHistoricalData(response.data.historicalData);
+    } catch (error) {
+      console.error('Error fetching historical data:', error);
+    }
   }, [selectedCoin, timeframe]);
 
-  const fetchData = async () => {
+  const fetchCandlestickData = useCallback(async () => {
+    try {
+      const response = await axios.get(`/api/crypto/candlesticks/${selectedCoin}?limit=${timeframe}`);
+      setCandlestickData(response.data.candlestickData);
+    } catch (error) {
+      console.error('Error fetching candlestick data:', error);
+    }
+  }, [selectedCoin, timeframe]);
+
+  const fetchHistoricalMovingAverages = useCallback(async () => {
+    try {
+      const response = await axios.get(`/api/crypto/historical-moving-averages/${selectedCoin}?days=${timeframe}&periods=5,9,15`);
+      setHistoricalMovingAverages(response.data.historicalMovingAverages);
+    } catch (error) {
+      console.error('Error fetching historical moving averages:', error);
+    }
+  }, [selectedCoin, timeframe]);
+
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [pricesRes, movingAveragesRes] = await Promise.all([
@@ -54,56 +64,36 @@ const Dashboard = () => {
       setPrices(pricesRes.data.prices);
       setMovingAverages(movingAveragesRes.data.movingAverages);
       await fetchHistoricalData();
+      await fetchCandlestickData();
+      await fetchHistoricalMovingAverages();
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to fetch data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchHistoricalData, fetchCandlestickData, fetchHistoricalMovingAverages]);
 
-  const fetchPrices = async () => {
+  const fetchPrices = useCallback(async () => {
     try {
       const response = await axios.get('/api/crypto/prices');
       setPrices(response.data.prices);
     } catch (error) {
       console.error('Error fetching prices:', error);
     }
-  };
+  }, []);
 
-  const fetchHistoricalData = async () => {
-    try {
-      const response = await axios.get(`/api/crypto/historical/${selectedCoin}?days=${timeframe}`);
-      setHistoricalData(response.data.historicalData);
-    } catch (error) {
-      console.error('Error fetching historical data:', error);
-    }
-  };
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchPrices, 30000); // Update prices every 30 seconds
+    return () => clearInterval(interval);
+  }, [fetchData, fetchPrices]);
 
-  const getCoinColor = (symbol) => {
-    const colors = {
-      BTC: '#f7931a',
-      ETH: '#627eea',
-      XRP: '#23292f',
-    };
-    return colors[symbol] || '#3b82f6';
-  };
-
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(price);
-  };
-
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  useEffect(() => {
+    fetchHistoricalData();
+    fetchCandlestickData();
+    fetchHistoricalMovingAverages();
+  }, [fetchHistoricalData, fetchCandlestickData, fetchHistoricalMovingAverages]);
 
   if (loading) {
     return (
@@ -161,6 +151,17 @@ const Dashboard = () => {
                   <Activity className="w-4 h-4 inline mr-1" />
                   MA
                 </button>
+                <button
+                  onClick={() => setChartType(chartType === 'line' ? 'candlestick' : 'line')}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    chartType === 'candlestick'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4 inline mr-1" />
+                  {chartType === 'line' ? 'Candles' : 'Line'}
+                </button>
                 <div className="flex border border-gray-300 rounded-md">
                   {timeframes.map((tf) => (
                     <button
@@ -180,39 +181,14 @@ const Dashboard = () => {
             </div>
 
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={historicalData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={formatDate}
-                    stroke="#6b7280"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(value) => `$${value.toLocaleString()}`}
-                    stroke="#6b7280"
-                    fontSize={12}
-                  />
-                  <Tooltip
-                    formatter={(value) => [formatPrice(value), 'Price']}
-                    labelFormatter={formatDate}
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="price"
-                    stroke={getCoinColor(selectedCoin)}
-                    fill={`${getCoinColor(selectedCoin)}20`}
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <UnifiedChart
+                historicalData={historicalData}
+                candlestickData={candlestickData}
+                historicalMovingAverages={historicalMovingAverages}
+                showMovingAverages={showMovingAverages}
+                coinSymbol={selectedCoin}
+                chartType={chartType}
+              />
             </div>
           </div>
         </div>

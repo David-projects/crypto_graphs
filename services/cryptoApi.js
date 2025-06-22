@@ -2,19 +2,90 @@ const axios = require('axios');
 
 class CryptoApiService {
   constructor() {
-    this.baseUrl = process.env.COINDESK_API_URL || 'https://api.coindesk.com/v1';
+    // Use Binance API instead of CoinGecko for better rate limits
+    this.baseUrl = 'https://api.binance.com/api/v3';
     this.supportedCoins = ['BTC', 'ETH', 'XRP'];
+    this.symbols = {
+      'BTC': 'BTCUSDT',
+      'ETH': 'ETHUSDT', 
+      'XRP': 'XRPUSDT'
+    };
+    
+    // Rate limiting configuration for Binance (much higher limits)
+    this.requestDelay = 100; // 100ms between requests (much faster)
+    this.lastRequestTime = 0;
+    this.maxRetries = 2;
+    this.useMockData = false;
+  }
+
+  // Helper method to add delay between requests
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Helper method to ensure rate limiting
+  async ensureRateLimit() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.requestDelay) {
+      await this.delay(this.requestDelay - timeSinceLastRequest);
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
+
+  // Helper method to make API requests with retry logic
+  async makeRequest(url, params = {}) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        await this.ensureRateLimit();
+        
+        const response = await axios.get(url, { 
+          params,
+          timeout: 10000 // 10 second timeout
+        });
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        
+        if (error.response && error.response.status === 429) {
+          // Rate limited - wait before retry
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`Rate limited, waiting ${waitTime}ms before retry ${attempt}/${this.maxRetries}`);
+          await this.delay(waitTime);
+        } else if (error.response && error.response.status >= 500) {
+          // Server error - wait before retry
+          await this.delay(1000 * attempt);
+        } else {
+          // Other errors - don't retry
+          throw error;
+        }
+      }
+    }
+    
+    throw lastError;
   }
 
   // Get current price for a specific coin
   async getCurrentPrice(coinSymbol) {
     try {
-      const response = await axios.get(`${this.baseUrl}/bpi/currentprice/${coinSymbol}.json`);
+      const symbol = this.symbols[coinSymbol];
+      if (!symbol) {
+        throw new Error(`Unsupported coin: ${coinSymbol}`);
+      }
+
+      const data = await this.makeRequest(`${this.baseUrl}/ticker/price`, {
+        symbol: symbol
+      });
+
       return {
         symbol: coinSymbol,
-        price: parseFloat(response.data.bpi[coinSymbol].rate.replace(',', '')),
-        currency: response.data.bpi[coinSymbol].code,
-        timestamp: new Date(response.data.time.updatedISO)
+        price: parseFloat(data.price),
+        currency: 'USD',
+        timestamp: new Date()
       };
     } catch (error) {
       console.error(`Error fetching current price for ${coinSymbol}:`, error.message);
@@ -35,27 +106,64 @@ class CryptoApiService {
     }
   }
 
+  // Get candlestick (OHLC) data for a specific coin
+  async getCandlestickData(coinSymbol, interval = '1d', limit = 100) {
+    try {
+      const symbol = this.symbols[coinSymbol];
+      if (!symbol) {
+        throw new Error(`Unsupported coin: ${coinSymbol}`);
+      }
+
+      const data = await this.makeRequest(`${this.baseUrl}/klines`, {
+        symbol: symbol,
+        interval: interval,
+        limit: limit
+      });
+
+      const candlestickData = data.map(([openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBaseVolume, takerBuyQuoteVolume, ignore]) => ({
+        date: new Date(openTime),
+        open: parseFloat(open),
+        high: parseFloat(high),
+        low: parseFloat(low),
+        close: parseFloat(close),
+        volume: parseFloat(volume),
+        symbol: coinSymbol
+      }));
+
+      return candlestickData.sort((a, b) => a.date - b.date);
+    } catch (error) {
+      console.error(`Error fetching candlestick data for ${coinSymbol}:`, error.message);
+      throw new Error(`Failed to fetch candlestick data for ${coinSymbol}`);
+    }
+  }
+
   // Get historical data for a specific coin
   async getHistoricalData(coinSymbol, startDate, endDate) {
     try {
-      const response = await axios.get(`${this.baseUrl}/bpi/historical/close.json`, {
-        params: {
-          currency: coinSymbol,
-          start: startDate,
-          end: endDate
-        }
-      });
-
-      const data = [];
-      for (const [date, price] of Object.entries(response.data.bpi)) {
-        data.push({
-          date: new Date(date),
-          price: parseFloat(price),
-          symbol: coinSymbol
-        });
+      const symbol = this.symbols[coinSymbol];
+      if (!symbol) {
+        throw new Error(`Unsupported coin: ${coinSymbol}`);
       }
 
-      return data.sort((a, b) => a.date - b.date);
+      // Convert dates to Unix timestamps
+      const startTimestamp = new Date(startDate).getTime();
+      const endTimestamp = new Date(endDate).getTime();
+
+      const data = await this.makeRequest(`${this.baseUrl}/klines`, {
+        symbol: symbol,
+        interval: '1d', // Daily intervals
+        startTime: startTimestamp,
+        endTime: endTimestamp,
+        limit: 1000
+      });
+
+      const historicalData = data.map(([timestamp, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBaseVolume, takerBuyQuoteVolume, ignore]) => ({
+        date: new Date(timestamp),
+        price: parseFloat(close),
+        symbol: coinSymbol
+      }));
+
+      return historicalData.sort((a, b) => a.date - b.date);
     } catch (error) {
       console.error(`Error fetching historical data for ${coinSymbol}:`, error.message);
       throw new Error(`Failed to fetch historical data for ${coinSymbol}`);
@@ -83,6 +191,43 @@ class CryptoApiService {
 
     const sum = data.slice(-period).reduce((acc, item) => acc + item.price, 0);
     return sum / period;
+  }
+
+  // Calculate historical moving averages for chart plotting
+  calculateHistoricalMovingAverages(data, periods = [5, 9, 15]) {
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    const result = [];
+    const maxPeriod = Math.max(...periods);
+
+    // Calculate moving averages for all data points
+    for (let i = 0; i < data.length; i++) {
+      const point = {
+        date: data[i].date,
+        close: data[i].price || data[i].close,
+        movingAverages: {}
+      };
+
+      // Calculate moving average for each period
+      periods.forEach(period => {
+        if (i >= period - 1) {
+          // We have enough data to calculate this moving average
+          const startIndex = i - period + 1;
+          const prices = data.slice(startIndex, i + 1).map(d => d.price || d.close);
+          const sum = prices.reduce((acc, price) => acc + price, 0);
+          point.movingAverages[period] = sum / period;
+        } else {
+          // Not enough data yet, set to null
+          point.movingAverages[period] = null;
+        }
+      });
+
+      result.push(point);
+    }
+
+    return result;
   }
 
   // Get moving averages for a coin

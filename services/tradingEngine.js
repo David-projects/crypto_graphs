@@ -19,13 +19,13 @@ class TradingEngine {
     console.log('Starting trading engine...');
     this.isRunning = true;
 
-    // Run every 30 seconds to check for stop loss/trailing stop triggers
-    cron.schedule('*/30 * * * * *', async () => {
+    // Run every 5 minutes instead of 30 seconds to reduce API calls
+    cron.schedule('*/5 * * * *', async () => {
       await this.checkStopLossOrders();
     });
 
-    // Update moving averages every hour
-    cron.schedule('0 * * * *', async () => {
+    // Update moving averages every 6 hours instead of every hour
+    cron.schedule('0 */6 * * *', async () => {
       await this.updateMovingAverages();
     });
 

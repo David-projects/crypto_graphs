@@ -32,6 +32,25 @@ router.get('/prices/:symbol', async (req, res) => {
   }
 });
 
+// Get candlestick data for a coin
+router.get('/candlesticks/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { interval = '1d', limit = 100 } = req.query;
+    
+    const candlestickData = await cryptoApi.getCandlestickData(
+      symbol.toUpperCase(),
+      interval,
+      parseInt(limit)
+    );
+    
+    res.json({ candlestickData });
+  } catch (error) {
+    console.error(`Error fetching candlestick data for ${req.params.symbol}:`, error);
+    res.status(500).json({ error: 'Failed to fetch candlestick data' });
+  }
+});
+
 // Get historical data for a coin
 router.get('/historical/:symbol', async (req, res) => {
   try {
@@ -80,6 +99,42 @@ router.get('/moving-averages/:symbol', async (req, res) => {
   } catch (error) {
     console.error(`Error fetching moving averages for ${req.params.symbol}:`, error);
     res.status(500).json({ error: 'Failed to fetch moving averages' });
+  }
+});
+
+// Get historical moving averages for chart plotting
+router.get('/historical-moving-averages/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { days = 30, periods = '5,9,15' } = req.query;
+    const periodArray = periods.split(',').map(p => parseInt(p));
+    const maxPeriod = Math.max(...periodArray);
+    
+    // Fetch more data than requested to ensure we have enough for moving average calculations
+    // Add extra days equal to the maximum period to ensure we can calculate moving averages for the full range
+    const extraDays = maxPeriod + 10; // Add buffer for safety
+    const totalDays = parseInt(days) + extraDays;
+    
+    // Get historical data first
+    const historicalData = await cryptoApi.getHistoricalDataForDays(
+      symbol.toUpperCase(),
+      totalDays
+    );
+    
+    // Calculate historical moving averages
+    const historicalMovingAverages = cryptoApi.calculateHistoricalMovingAverages(
+      historicalData,
+      periodArray
+    );
+    
+    // Return only the requested number of days (trim from the end to get the most recent data)
+    const requestedDays = parseInt(days);
+    const trimmedData = historicalMovingAverages.slice(-requestedDays);
+    
+    res.json({ historicalMovingAverages: trimmedData });
+  } catch (error) {
+    console.error(`Error fetching historical moving averages for ${req.params.symbol}:`, error);
+    res.status(500).json({ error: 'Failed to fetch historical moving averages' });
   }
 });
 
