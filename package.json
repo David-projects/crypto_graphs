@@ -1,0 +1,48 @@
+{
+  "name": "crypto-graphs",
+  "version": "1.0.0",
+  "description": "Cryptocurrency trading web app with real-time graphs, moving averages, and automated trading",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-client": "cd client && npm install",
+    "heroku-postbuild": "npm run install-client && npm run build"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "pg": "^8.11.3",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "express-session": "^1.17.3",
+    "connect-pg-simple": "^7.0.0",
+    "multer": "^1.4.5-lts.1",
+    "compression": "^1.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "cryptocurrency",
+    "trading",
+    "blockchain",
+    "bitcoin",
+    "ethereum",
+    "xrp"
+  ],
+  "author": "Crypto Graphs Team",
+  "license": "MIT"
+} 
