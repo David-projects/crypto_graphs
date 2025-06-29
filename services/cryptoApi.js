@@ -230,6 +230,43 @@ class CryptoApiService {
     return result;
   }
 
+  // Calculate moving averages from candlestick data for different timeframes
+  calculateCandlestickMovingAverages(candlestickData, periods = [5, 9, 15]) {
+    if (!candlestickData || candlestickData.length === 0) {
+      return [];
+    }
+
+    const result = [];
+    const maxPeriod = Math.max(...periods);
+
+    // Calculate moving averages for all data points
+    for (let i = 0; i < candlestickData.length; i++) {
+      const point = {
+        date: candlestickData[i].date,
+        close: candlestickData[i].close,
+        movingAverages: {}
+      };
+
+      // Calculate moving average for each period
+      periods.forEach(period => {
+        if (i >= period - 1) {
+          // We have enough data to calculate this moving average
+          const startIndex = i - period + 1;
+          const prices = candlestickData.slice(startIndex, i + 1).map(d => d.close);
+          const sum = prices.reduce((acc, price) => acc + price, 0);
+          point.movingAverages[period] = sum / period;
+        } else {
+          // Not enough data yet, set to null
+          point.movingAverages[period] = null;
+        }
+      });
+
+      result.push(point);
+    }
+
+    return result;
+  }
+
   // Get moving averages for a coin
   async getMovingAverages(coinSymbol, periods = [1, 2, 5, 9, 15]) {
     try {

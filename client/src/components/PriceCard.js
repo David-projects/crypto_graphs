@@ -10,7 +10,7 @@ const PriceCard = ({ price, onClick, isSelected }) => {
       const change = ((price.price - previousPrice) / previousPrice) * 100;
       // Only update if the change is significant (more than 0.001% to avoid floating point issues)
       if (Math.abs(change) > 0.001) {
-        setPriceChange(change);
+      setPriceChange(change);
       }
     }
     setPreviousPrice(price?.price);
@@ -43,7 +43,7 @@ const PriceCard = ({ price, onClick, isSelected }) => {
     } else if (Math.abs(change) < 0.1) {
       return `${sign}${change.toFixed(3)}%`;
     } else {
-      return `${sign}${change.toFixed(2)}%`;
+    return `${sign}${change.toFixed(2)}%`;
     }
   };
 

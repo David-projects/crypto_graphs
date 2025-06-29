@@ -138,6 +138,42 @@ router.get('/historical-moving-averages/:symbol', async (req, res) => {
   }
 });
 
+// Get candlestick-based moving averages for different timeframes
+router.get('/candlestick-moving-averages/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { interval = '1d', periods = '5,9,15', limit = 100 } = req.query;
+    const periodArray = periods.split(',').map(p => parseInt(p));
+    const maxPeriod = Math.max(...periodArray);
+    
+    // Fetch more data than requested to ensure we have enough for moving average calculations
+    const extraCandles = maxPeriod + 10; // Add buffer for safety
+    const totalLimit = parseInt(limit) + extraCandles;
+    
+    // Get candlestick data
+    const candlestickData = await cryptoApi.getCandlestickData(
+      symbol.toUpperCase(),
+      interval,
+      totalLimit
+    );
+    
+    // Calculate moving averages from candlestick data
+    const movingAveragesData = cryptoApi.calculateCandlestickMovingAverages(
+      candlestickData,
+      periodArray
+    );
+    
+    // Return only the requested number of candles (trim from the end to get the most recent data)
+    const requestedLimit = parseInt(limit);
+    const trimmedData = movingAveragesData.slice(-requestedLimit);
+    
+    res.json({ candlestickMovingAverages: trimmedData });
+  } catch (error) {
+    console.error(`Error fetching candlestick moving averages for ${req.params.symbol}:`, error);
+    res.status(500).json({ error: 'Failed to fetch candlestick moving averages' });
+  }
+});
+
 // Transaction validation
 const transactionValidation = [
   body('coin_symbol')

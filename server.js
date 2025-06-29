@@ -43,18 +43,18 @@ app.use(cors({
 app.use(compression());
 
 // Rate limiting with proper configuration
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use X-Forwarded-For header if available, otherwise use IP
-    return req.headers['x-forwarded-for'] || req.ip;
-  }
-});
-app.use(limiter);
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 100, // limit each IP to 100 requests per windowMs
+//   message: 'Too many requests from this IP, please try again later.',
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   keyGenerator: (req) => {
+//     // Use X-Forwarded-For header if available, otherwise use IP
+//     return req.headers['x-forwarded-for'] || req.ip;
+//   }
+// });
+// app.use(limiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

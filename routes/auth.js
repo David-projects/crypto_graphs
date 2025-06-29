@@ -8,11 +8,12 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 // Rate limiting for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: 'Too many authentication attempts, please try again later'
-});
+// const maxRequests = process.env.NODE_ENV === 'production' ? 5 : 1000;
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: maxRequests, // much higher in development
+//   message: 'Too many authentication attempts, please try again later'
+// });
 
 // Sign up validation
 const signupValidation = [
@@ -39,7 +40,7 @@ const signinValidation = [
 ];
 
 // Sign up route
-router.post('/signup', authLimiter, signupValidation, async (req, res) => {
+router.post('/signup', signupValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -96,7 +97,7 @@ router.post('/signup', authLimiter, signupValidation, async (req, res) => {
 });
 
 // Sign in route
-router.post('/signin', authLimiter, signinValidation, async (req, res) => {
+router.post('/signin', signinValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

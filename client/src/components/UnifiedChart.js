@@ -9,7 +9,7 @@ import {
   AreaChart,
 } from 'recharts';
 
-const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverages, showMovingAverages, coinSymbol, chartType }) => {
+const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverages, showMovingAverages, coinSymbol, chartType, chartInterval = '1d' }) => {
   const [tooltip, setTooltip] = useState(null);
 
   const formatPrice = (price) => {
@@ -22,9 +22,48 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
   };
 
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-US', {
+    const dateObj = new Date(date);
+    
+    // For intraday intervals, show time
+    if (['1m', '5m', '15m', '1h', '4h'].includes(chartInterval)) {
+      return dateObj.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    }
+    
+    // For daily intervals, show just date
+    return dateObj.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
+    });
+  };
+
+  const formatTooltipDate = (date) => {
+    const dateObj = new Date(date);
+    
+    // For intraday intervals, show detailed time
+    if (['1m', '5m', '15m', '1h', '4h'].includes(chartInterval)) {
+      return dateObj.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    }
+    
+    // For daily intervals, show date
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
     });
   };
 
@@ -60,18 +99,37 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
         return [];
       }
 
-      // Create a map of moving averages by normalized UTC day
-      const maMap = new Map();
-      historicalMovingAverages.forEach(point => {
-        const day = normalizeToUTCDay(point.date);
-        maMap.set(day, point.movingAverages);
-      });
+      // For intraday intervals, we need to align by exact time
+      // For daily intervals, we can align by UTC day
+      const isIntraday = ['1m', '5m', '15m', '1h', '4h'].includes(chartInterval);
+      
+      if (isIntraday) {
+        // For intraday, align by exact date/time
+        const maMap = new Map();
+        historicalMovingAverages.forEach(point => {
+          const dateKey = new Date(point.date).getTime();
+          maMap.set(dateKey, point.movingAverages);
+        });
 
-      // Align moving averages with candlestick data
-      return candlestickData.map(candle => {
-        const day = normalizeToUTCDay(candle.date);
-        return maMap.get(day) || { 5: null, 9: null, 15: null };
-      });
+        // Align moving averages with candlestick data by exact date
+        return candlestickData.map(candle => {
+          const dateKey = new Date(candle.date).getTime();
+          return maMap.get(dateKey) || { 5: null, 9: null, 15: null };
+        });
+      } else {
+        // For daily intervals, align by UTC day
+        const maMap = new Map();
+        historicalMovingAverages.forEach(point => {
+          const day = normalizeToUTCDay(point.date);
+          maMap.set(day, point.movingAverages);
+        });
+
+        // Align moving averages with candlestick data
+        return candlestickData.map(candle => {
+          const day = normalizeToUTCDay(candle.date);
+          return maMap.get(day) || { 5: null, 9: null, 15: null };
+        });
+      }
     };
 
     const alignedMovingAverages = alignMovingAverages();
@@ -152,7 +210,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             filter="drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))"
           />
           <text x={x + 20} y={y - 80} fontSize="12" fontWeight="bold" fill="#374151">
-            {formatDate(data.date)}
+            {formatTooltipDate(data.date)}
           </text>
           <text x={x + 20} y={y - 65} fontSize="10" fill="#6b7280">
             Open: <tspan fontWeight="500" fill="#374151">{formatPrice(data.open)}</tspan>
@@ -370,11 +428,17 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
                 Moving Averages
               </text>
               <line x1={margin.left + 10} y1={margin.top + 5} x2={margin.left + 50} y2={margin.top + 5} stroke="#3b82f6" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">5-day MA</text>
+              <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">
+                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '5-period MA' : '5-day MA'}
+              </text>
               <line x1={margin.left + 10} y1={margin.top + 20} x2={margin.left + 50} y2={margin.top + 20} stroke="#f59e0b" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">9-day MA</text>
+              <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">
+                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '9-period MA' : '9-day MA'}
+              </text>
               <line x1={margin.left + 10} y1={margin.top + 35} x2={margin.left + 50} y2={margin.top + 35} stroke="#8b5cf6" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">15-day MA</text>
+              <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">
+                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '15-period MA' : '15-day MA'}
+              </text>
             </g>
           )}
         </svg>
@@ -423,15 +487,16 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           />
           <Tooltip
             formatter={(value, name) => {
+              const isIntraday = ['1m', '5m', '15m', '1h', '4h'].includes(chartInterval);
               const labels = {
                 price: 'Price',
-                ma5: '5-day MA',
-                ma9: '9-day MA',
-                ma15: '15-day MA'
+                ma5: isIntraday ? '5-period MA' : '5-day MA',
+                ma9: isIntraday ? '9-period MA' : '9-day MA',
+                ma15: isIntraday ? '15-period MA' : '15-day MA'
               };
               return [formatPrice(value), labels[name] || name];
             }}
-            labelFormatter={formatDate}
+            labelFormatter={formatTooltipDate}
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',
