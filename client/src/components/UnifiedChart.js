@@ -1006,26 +1006,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             </g>
           )}
 
-          {/* Zoom Controls */}
-          <g>
-            <rect
-              x={width - 150}
-              y={margin.top - 15}
-              width={140}
-              height={30}
-              fill="white"
-              stroke="#e5e7eb"
-              strokeWidth={1}
-              rx={4}
-              opacity={0.9}
-            />
-            <text x={width - 145} y={margin.top + 5} fontSize="10" fill="#374151">
-              Pan: Left/Right drag | Trend: Ctrl+drag
-            </text>
-            <text x={width - 145} y={margin.top + 18} fontSize="10" fill="#374151">
-              Zoom: +/- buttons | Wheel | Keys: +/-/Esc
-            </text>
-          </g>
+
         </svg>
         </div>
       </div>
