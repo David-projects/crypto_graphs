@@ -54,9 +54,13 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     const y = screenY - rect.top - margin.top;
     
     const currentData = getCurrentData();
-    const currentCandleSpacing = (1200 - margin.left - margin.right) / currentData.length;
+    const futureSpace = 200;
+    const currentCandleSpacing = (1200 - margin.left - margin.right - futureSpace) / currentData.length;
     const index = Math.floor(x / currentCandleSpacing);
-    const clampedIndex = Math.max(0, Math.min(index, currentData.length - 1));
+    
+    // Allow drawing beyond current data for future projections
+    const maxIndex = currentData.length - 1;
+    const projectedIndex = Math.max(0, Math.min(index, maxIndex + 20)); // Allow 20 periods into future
     
     // Calculate price from Y coordinate
     const priceRange = {
@@ -74,7 +78,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     
     const price = maxPrice - (y / priceChartHeight) * priceRangeTotal;
     
-    return { index: clampedIndex, price: Math.max(minPrice, Math.min(maxPrice, price)) };
+    return { index: projectedIndex, price: Math.max(minPrice, Math.min(maxPrice, price)) };
   }, [candlestickData, getCurrentData, margin.left, margin.right, margin.top, margin.bottom]);
 
   // Trend line functions
@@ -444,7 +448,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     // Chart dimensions
     const width = 1200; // Increased width for full screen
     const height = 400; // Increased height to accommodate volume
-    const chartWidth = width - margin.left - margin.right;
+    const futureSpace = 200; // Extra space on the right for trend line projections
+    const chartWidth = width - margin.left - margin.right - futureSpace;
     const chartHeight = height - margin.top - margin.bottom;
     
     // Volume chart dimensions
@@ -462,7 +467,19 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
 
     // Helper function to convert index to X coordinate
     const indexToX = (index) => {
-      return margin.left + index * candleSpacing + candleSpacing / 2;
+      // Handle future projections
+      const currentData = getCurrentData();
+      const maxIndex = currentData.length - 1;
+      const isFutureProjection = index > maxIndex;
+      
+      if (isFutureProjection) {
+        // Use the same spacing calculation as in screenToPrice for consistency
+        const futureSpace = 200;
+        const currentCandleSpacing = (1200 - margin.left - margin.right - futureSpace) / currentData.length;
+        return margin.left + index * currentCandleSpacing + currentCandleSpacing / 2;
+      } else {
+        return margin.left + index * candleSpacing + candleSpacing / 2;
+      }
     };
 
     // Calculate volume range for scaling
@@ -470,6 +487,24 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
       min: 0,
       max: Math.max(...currentData.map(d => d.volume))
     };
+
+    // Calculate volume moving averages
+    const calculateVolumeMA = (period) => {
+      const volumeMA = [];
+      for (let i = 0; i < currentData.length; i++) {
+        if (i < period - 1) {
+          volumeMA.push(null);
+        } else {
+          const sum = currentData.slice(i - period + 1, i + 1).reduce((acc, d) => acc + d.volume, 0);
+          volumeMA.push(sum / period);
+        }
+      }
+      return volumeMA;
+    };
+
+    const volumeMA5 = calculateVolumeMA(5);
+    const volumeMA10 = calculateVolumeMA(10);
+    const volumeMA20 = calculateVolumeMA(20);
 
     const CustomTooltip = ({ x, y, data }) => {
       if (!data) return null;
@@ -658,6 +693,68 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             );
           })}
 
+          {/* Volume Moving Average Lines */}
+          {showMovingAverages && (
+            <>
+              {/* Volume MA 5 */}
+              <path
+                d={volumeMA5
+                  .map((ma, index) => {
+                    if (ma === null) return null;
+                    const x = indexToX(index);
+                    const volumeMAHeight = (ma / volumeRange.max) * volumeHeight;
+                    const volumeMAY = margin.top + priceChartHeight + 20 + volumeHeight - volumeMAHeight;
+                    return `${x},${volumeMAY}`;
+                  })
+                  .filter(Boolean)
+                  .map((coord, index) => index === 0 ? `M ${coord}` : `L ${coord}`)
+                  .join(' ')}
+                stroke="#3b82f6"
+                strokeWidth={1.5}
+                fill="none"
+                opacity={0.8}
+              />
+              
+              {/* Volume MA 10 */}
+              <path
+                d={volumeMA10
+                  .map((ma, index) => {
+                    if (ma === null) return null;
+                    const x = indexToX(index);
+                    const volumeMAHeight = (ma / volumeRange.max) * volumeHeight;
+                    const volumeMAY = margin.top + priceChartHeight + 20 + volumeHeight - volumeMAHeight;
+                    return `${x},${volumeMAY}`;
+                  })
+                  .filter(Boolean)
+                  .map((coord, index) => index === 0 ? `M ${coord}` : `L ${coord}`)
+                  .join(' ')}
+                stroke="#f59e0b"
+                strokeWidth={1.5}
+                fill="none"
+                opacity={0.8}
+              />
+              
+              {/* Volume MA 20 */}
+              <path
+                d={volumeMA20
+                  .map((ma, index) => {
+                    if (ma === null) return null;
+                    const x = indexToX(index);
+                    const volumeMAHeight = (ma / volumeRange.max) * volumeHeight;
+                    const volumeMAY = margin.top + priceChartHeight + 20 + volumeHeight - volumeMAHeight;
+                    return `${x},${volumeMAY}`;
+                  })
+                  .filter(Boolean)
+                  .map((coord, index) => index === 0 ? `M ${coord}` : `L ${coord}`)
+                  .join(' ')}
+                stroke="#8b5cf6"
+                strokeWidth={1.5}
+                fill="none"
+                opacity={0.8}
+              />
+            </>
+          )}
+
           {/* Volume Chart Border */}
           <rect
             x={margin.left}
@@ -668,6 +765,29 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             stroke="#e5e7eb"
             strokeWidth={1}
           />
+
+          {/* Future Space Indicator */}
+          <rect
+            x={margin.left + chartWidth}
+            y={margin.top}
+            width={200}
+            height={height - margin.top - margin.bottom}
+            fill="#f8fafc"
+            stroke="#e2e8f0"
+            strokeWidth={1}
+            strokeDasharray="5,5"
+            opacity={0.5}
+          />
+          <text
+            x={margin.left + chartWidth + 100}
+            y={margin.top + 20}
+            textAnchor="middle"
+            fontSize="12"
+            fill="#64748b"
+            fontWeight="500"
+          >
+            Future Projection Area
+          </text>
 
           {/* Volume Label */}
           <text
@@ -747,6 +867,11 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             const endX = indexToX(line.end.index);
             const endY = priceToY(line.end.price);
             
+            // Check if this is a future projection
+            const currentData = getCurrentData();
+            const maxIndex = currentData.length - 1;
+            const isFutureProjection = line.end.index > maxIndex;
+            
             return (
               <g key={line.id}>
                 <line
@@ -756,8 +881,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
                   y2={endY}
                   stroke={line.color}
                   strokeWidth={line.width}
-                  strokeDasharray="5,5"
-                  opacity={0.8}
+                  strokeDasharray={isFutureProjection ? "10,5" : "5,5"}
+                  opacity={isFutureProjection ? 0.6 : 0.8}
                 />
                 <circle
                   cx={startX}
@@ -769,9 +894,9 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
                 <circle
                   cx={endX}
                   cy={endY}
-                  r={4}
+                  r={isFutureProjection ? 3 : 4}
                   fill={line.color}
-                  opacity={0.8}
+                  opacity={isFutureProjection ? 0.6 : 0.8}
                 />
               </g>
             );
@@ -780,30 +905,46 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           {/* Current Trend Line Being Drawn */}
           {currentTrendLine && (
             <g>
-              <line
-                x1={indexToX(currentTrendLine.start.index)}
-                y1={priceToY(currentTrendLine.start.price)}
-                x2={indexToX(currentTrendLine.end.index)}
-                y2={priceToY(currentTrendLine.end.price)}
-                stroke="#ff6b6b"
-                strokeWidth={2}
-                strokeDasharray="5,5"
-                opacity={0.6}
-              />
-              <circle
-                cx={indexToX(currentTrendLine.start.index)}
-                cy={priceToY(currentTrendLine.start.price)}
-                r={4}
-                fill="#ff6b6b"
-                opacity={0.8}
-              />
-              <circle
-                cx={indexToX(currentTrendLine.end.index)}
-                cy={priceToY(currentTrendLine.end.price)}
-                r={4}
-                fill="#ff6b6b"
-                opacity={0.8}
-              />
+              {(() => {
+                const startX = indexToX(currentTrendLine.start.index);
+                const startY = priceToY(currentTrendLine.start.price);
+                const endX = indexToX(currentTrendLine.end.index);
+                const endY = priceToY(currentTrendLine.end.price);
+                
+                // Check if this is a future projection
+                const currentData = getCurrentData();
+                const maxIndex = currentData.length - 1;
+                const isFutureProjection = currentTrendLine.end.index > maxIndex;
+                
+                return (
+                  <>
+                    <line
+                      x1={startX}
+                      y1={startY}
+                      x2={endX}
+                      y2={endY}
+                      stroke="#ff6b6b"
+                      strokeWidth={2}
+                      strokeDasharray={isFutureProjection ? "10,5" : "5,5"}
+                      opacity={0.6}
+                    />
+                    <circle
+                      cx={startX}
+                      cy={startY}
+                      r={4}
+                      fill="#ff6b6b"
+                      opacity={0.8}
+                    />
+                    <circle
+                      cx={endX}
+                      cy={endY}
+                      r={isFutureProjection ? 3 : 4}
+                      fill="#ff6b6b"
+                      opacity={0.8}
+                    />
+                  </>
+                );
+              })()}
             </g>
           )}
 
@@ -811,13 +952,13 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           {tooltip && <CustomTooltip {...tooltip} />}
 
           {/* Legend */}
-          {showMovingAverages && alignedMovingAverages && alignedMovingAverages.length > 0 && (
+          {showMovingAverages && (
             <g>
               <rect
                 x={margin.left}
                 y={margin.top - 15}
                 width={200}
-                height={60}
+                height={90}
                 fill="white"
                 stroke="#e5e7eb"
                 strokeWidth={1}
@@ -827,17 +968,40 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
               <text x={margin.left + 10} y={margin.top} fontSize="12" fontWeight="bold" fill="#374151">
                 Moving Averages
               </text>
-              <line x1={margin.left + 10} y1={margin.top + 5} x2={margin.left + 50} y2={margin.top + 5} stroke="#3b82f6" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">
-                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '5-period MA' : '5-day MA'}
+              
+              {/* Price MAs */}
+              {alignedMovingAverages && alignedMovingAverages.length > 0 && (
+                <>
+                  <line x1={margin.left + 10} y1={margin.top + 5} x2={margin.left + 50} y2={margin.top + 5} stroke="#3b82f6" strokeWidth={2} />
+                  <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">
+                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '5-period MA' : '5-day MA'}
+                  </text>
+                  <line x1={margin.left + 10} y1={margin.top + 20} x2={margin.left + 50} y2={margin.top + 20} stroke="#f59e0b" strokeWidth={2} />
+                  <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">
+                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '9-period MA' : '9-day MA'}
+                  </text>
+                  <line x1={margin.left + 10} y1={margin.top + 35} x2={margin.left + 50} y2={margin.top + 35} stroke="#8b5cf6" strokeWidth={2} />
+                  <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">
+                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '15-period MA' : '15-day MA'}
+                  </text>
+                </>
+              )}
+              
+              {/* Volume MAs */}
+              <text x={margin.left + 10} y={margin.top + 55} fontSize="10" fontWeight="bold" fill="#374151">
+                Volume MAs:
               </text>
-              <line x1={margin.left + 10} y1={margin.top + 20} x2={margin.left + 50} y2={margin.top + 20} stroke="#f59e0b" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">
-                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '9-period MA' : '9-day MA'}
+              <line x1={margin.left + 10} y1={margin.top + 60} x2={margin.left + 50} y2={margin.top + 60} stroke="#3b82f6" strokeWidth={1.5} />
+              <text x={margin.left + 55} y={margin.top + 63} fontSize="9" fill="#374151">
+                MA 5
               </text>
-              <line x1={margin.left + 10} y1={margin.top + 35} x2={margin.left + 50} y2={margin.top + 35} stroke="#8b5cf6" strokeWidth={2} />
-              <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">
-                {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '15-period MA' : '15-day MA'}
+              <line x1={margin.left + 10} y1={margin.top + 70} x2={margin.left + 50} y2={margin.top + 70} stroke="#f59e0b" strokeWidth={1.5} />
+              <text x={margin.left + 55} y={margin.top + 73} fontSize="9" fill="#374151">
+                MA 10
+              </text>
+              <line x1={margin.left + 10} y1={margin.top + 80} x2={margin.left + 50} y2={margin.top + 80} stroke="#8b5cf6" strokeWidth={1.5} />
+              <text x={margin.left + 55} y={margin.top + 83} fontSize="9" fill="#374151">
+                MA 20
               </text>
             </g>
           )}
