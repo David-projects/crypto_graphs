@@ -21,6 +21,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
   const [trendLines, setTrendLines] = useState([]);
   const [isDrawingTrendLine, setIsDrawingTrendLine] = useState(false);
   const [currentTrendLine, setCurrentTrendLine] = useState(null);
+  const [showFlags, setShowFlags] = useState(true);
   const svgRef = useRef(null);
   
   // Chart dimensions constants
@@ -597,6 +598,28 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
               </div>
             )}
           </div>
+
+          {/* Flag Controls */}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => setShowFlags(!showFlags)}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                showFlags 
+                  ? 'bg-green-500 hover:bg-green-600 text-white' 
+                  : 'bg-gray-500 hover:bg-gray-600 text-white'
+              }`}
+              title={showFlags ? "Hide Bullish/Bearish Flags" : "Show Bullish/Bearish Flags"}
+            >
+              {showFlags ? 'Hide Flags' : 'Show Flags'}
+            </button>
+            {showFlags && (
+              <div className="bg-blue-100 border border-blue-300 rounded px-2 py-1">
+                <span className="text-xs text-blue-700 font-medium">
+                  Flags Active
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Chart Area */}
@@ -642,6 +665,51 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             const candleColor = isGreen ? '#10b981' : '#ef4444';
             const strokeColor = isGreen ? '#059669' : '#dc2626';
 
+            // Calculate bullish/bearish flags
+            const getFlagType = () => {
+              if (index === 0) return null;
+              
+              const prevCandle = currentData[index - 1];
+              const currentBodySize = Math.abs(candle.close - candle.open);
+              const prevBodySize = Math.abs(prevCandle.close - prevCandle.open);
+              const currentWickSize = candle.high - candle.low;
+              const prevWickSize = prevCandle.high - prevCandle.low;
+              
+              // Bullish flag: small body after a strong green candle
+              if (isGreen && 
+                  prevCandle.close > prevCandle.open && 
+                  currentBodySize < prevBodySize * 0.5 &&
+                  currentWickSize < prevWickSize * 0.8) {
+                return 'bullish';
+              }
+              
+              // Bearish flag: small body after a strong red candle
+              if (!isGreen && 
+                  prevCandle.close < prevCandle.open && 
+                  currentBodySize < prevBodySize * 0.5 &&
+                  currentWickSize < prevWickSize * 0.8) {
+                return 'bearish';
+              }
+              
+              // Strong bullish: large green body with small wick
+              if (isGreen && 
+                  currentBodySize > currentWickSize * 0.7 &&
+                  currentBodySize > prevBodySize * 1.5) {
+                return 'strong-bullish';
+              }
+              
+              // Strong bearish: large red body with small wick
+              if (!isGreen && 
+                  currentBodySize > currentWickSize * 0.7 &&
+                  currentBodySize > prevBodySize * 1.5) {
+                return 'strong-bearish';
+              }
+              
+              return null;
+            };
+
+            const flagType = getFlagType();
+
             return (
               <g
                 key={index}
@@ -669,6 +737,45 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
                   stroke={strokeColor}
                   strokeWidth={1}
                 />
+
+                {/* Bullish/Bearish Flags */}
+                {showFlags && flagType && (
+                  <g>
+                    {/* Flag pole */}
+                    <line
+                      x1={x}
+                      y1={flagType.includes('bullish') ? wickTop - 15 : wickBottom + 15}
+                      x2={x}
+                      y2={flagType.includes('bullish') ? wickTop - 25 : wickBottom + 25}
+                      stroke={flagType.includes('bullish') ? '#10b981' : '#ef4444'}
+                      strokeWidth={2}
+                    />
+                    
+                    {/* Flag */}
+                    <rect
+                      x={x - 8}
+                      y={flagType.includes('bullish') ? wickTop - 30 : wickBottom + 25}
+                      width={16}
+                      height={8}
+                      fill={flagType.includes('bullish') ? '#10b981' : '#ef4444'}
+                      stroke={flagType.includes('bullish') ? '#059669' : '#dc2626'}
+                      strokeWidth={1}
+                      rx={1}
+                    />
+                    
+                    {/* Flag symbol */}
+                    <text
+                      x={x}
+                      y={flagType.includes('bullish') ? wickTop - 25 : wickBottom + 30}
+                      textAnchor="middle"
+                      fontSize="8"
+                      fill="white"
+                      fontWeight="bold"
+                    >
+                      {flagType.includes('strong') ? '⚡' : '🚩'}
+                    </text>
+                  </g>
+                )}
               </g>
             );
           })}
@@ -952,59 +1059,88 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           {tooltip && <CustomTooltip {...tooltip} />}
 
           {/* Legend */}
-          {showMovingAverages && (
-            <g>
-              <rect
-                x={margin.left}
-                y={margin.top - 15}
-                width={200}
-                height={90}
-                fill="white"
-                stroke="#e5e7eb"
-                strokeWidth={1}
-                rx={4}
-                opacity={0.9}
-              />
-              <text x={margin.left + 10} y={margin.top} fontSize="12" fontWeight="bold" fill="#374151">
-                Moving Averages
-              </text>
-              
-              {/* Price MAs */}
-              {alignedMovingAverages && alignedMovingAverages.length > 0 && (
-                <>
-                  <line x1={margin.left + 10} y1={margin.top + 5} x2={margin.left + 50} y2={margin.top + 5} stroke="#3b82f6" strokeWidth={2} />
-                  <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">
-                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '5-period MA' : '5-day MA'}
+          <g>
+            <rect
+              x={margin.left}
+              y={margin.top - 15}
+              width={showMovingAverages ? 200 : 150}
+              height={showMovingAverages ? 120 : 50}
+              fill="white"
+              stroke="#e5e7eb"
+              strokeWidth={1}
+              rx={4}
+              opacity={0.9}
+            />
+            
+            {showMovingAverages && (
+              <>
+                <text x={margin.left + 10} y={margin.top} fontSize="12" fontWeight="bold" fill="#374151">
+                  Moving Averages
+                </text>
+                
+                {/* Price MAs */}
+                {alignedMovingAverages && alignedMovingAverages.length > 0 && (
+                  <>
+                    <line x1={margin.left + 10} y1={margin.top + 5} x2={margin.left + 50} y2={margin.top + 5} stroke="#3b82f6" strokeWidth={2} />
+                    <text x={margin.left + 55} y={margin.top + 8} fontSize="10" fill="#374151">
+                      {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '5-period MA' : '5-day MA'}
+                    </text>
+                    <line x1={margin.left + 10} y1={margin.top + 20} x2={margin.left + 50} y2={margin.top + 20} stroke="#f59e0b" strokeWidth={2} />
+                    <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">
+                      {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '9-period MA' : '9-day MA'}
+                    </text>
+                    <line x1={margin.left + 10} y1={margin.top + 35} x2={margin.left + 50} y2={margin.top + 35} stroke="#8b5cf6" strokeWidth={2} />
+                    <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">
+                      {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '15-period MA' : '15-day MA'}
+                    </text>
+                  </>
+                )}
+                
+                {/* Volume MAs */}
+                <text x={margin.left + 10} y={margin.top + 55} fontSize="10" fontWeight="bold" fill="#374151">
+                  Volume MAs:
+                </text>
+                <line x1={margin.left + 10} y1={margin.top + 60} x2={margin.left + 50} y2={margin.top + 60} stroke="#3b82f6" strokeWidth={1.5} />
+                <text x={margin.left + 55} y={margin.top + 63} fontSize="9" fill="#374151">
+                  MA 5
+                </text>
+                <line x1={margin.left + 10} y1={margin.top + 70} x2={margin.left + 50} y2={margin.top + 70} stroke="#f59e0b" strokeWidth={1.5} />
+                <text x={margin.left + 55} y={margin.top + 73} fontSize="9" fill="#374151">
+                  MA 10
+                </text>
+                <line x1={margin.left + 10} y1={margin.top + 80} x2={margin.left + 50} y2={margin.top + 80} stroke="#8b5cf6" strokeWidth={1.5} />
+                <text x={margin.left + 55} y={margin.top + 83} fontSize="9" fill="#374151">
+                  MA 20
+                </text>
+              </>
+            )}
+            
+            {/* Flag Legend */}
+            {showFlags && (
+              <>
+                <text x={margin.left + 10} y={margin.top + (showMovingAverages ? 105 : 5)} fontSize="10" fontWeight="bold" fill="#374151">
+                  Flags:
+                </text>
+                <g>
+                  {/* Bullish flag example */}
+                  <line x1={margin.left + 10} y1={margin.top + (showMovingAverages ? 110 : 10)} x2={margin.left + 10} y2={margin.top + (showMovingAverages ? 115 : 15)} stroke="#10b981" strokeWidth={2} />
+                  <rect x={margin.left + 2} y={margin.top + (showMovingAverages ? 115 : 15)} width={16} height={8} fill="#10b981" stroke="#059669" strokeWidth={1} rx={1} />
+                  <text x={margin.left + 10} y={margin.top + (showMovingAverages ? 120 : 20)} textAnchor="middle" fontSize="8" fill="white" fontWeight="bold">🚩</text>
+                  <text x={margin.left + 25} y={margin.top + (showMovingAverages ? 118 : 18)} fontSize="9" fill="#374151">
+                    Bullish
                   </text>
-                  <line x1={margin.left + 10} y1={margin.top + 20} x2={margin.left + 50} y2={margin.top + 20} stroke="#f59e0b" strokeWidth={2} />
-                  <text x={margin.left + 55} y={margin.top + 23} fontSize="10" fill="#374151">
-                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '9-period MA' : '9-day MA'}
+                  
+                  {/* Bearish flag example */}
+                  <line x1={margin.left + 10} y1={margin.top + (showMovingAverages ? 125 : 25)} x2={margin.left + 10} y2={margin.top + (showMovingAverages ? 130 : 30)} stroke="#ef4444" strokeWidth={2} />
+                  <rect x={margin.left + 2} y={margin.top + (showMovingAverages ? 130 : 30)} width={16} height={8} fill="#ef4444" stroke="#dc2626" strokeWidth={1} rx={1} />
+                  <text x={margin.left + 10} y={margin.top + (showMovingAverages ? 135 : 35)} textAnchor="middle" fontSize="8" fill="white" fontWeight="bold">🚩</text>
+                  <text x={margin.left + 25} y={margin.top + (showMovingAverages ? 133 : 33)} fontSize="9" fill="#374151">
+                    Bearish
                   </text>
-                  <line x1={margin.left + 10} y1={margin.top + 35} x2={margin.left + 50} y2={margin.top + 35} stroke="#8b5cf6" strokeWidth={2} />
-                  <text x={margin.left + 55} y={margin.top + 38} fontSize="10" fill="#374151">
-                    {['1m', '5m', '15m', '1h', '4h'].includes(chartInterval) ? '15-period MA' : '15-day MA'}
-                  </text>
-                </>
-              )}
-              
-              {/* Volume MAs */}
-              <text x={margin.left + 10} y={margin.top + 55} fontSize="10" fontWeight="bold" fill="#374151">
-                Volume MAs:
-              </text>
-              <line x1={margin.left + 10} y1={margin.top + 60} x2={margin.left + 50} y2={margin.top + 60} stroke="#3b82f6" strokeWidth={1.5} />
-              <text x={margin.left + 55} y={margin.top + 63} fontSize="9" fill="#374151">
-                MA 5
-              </text>
-              <line x1={margin.left + 10} y1={margin.top + 70} x2={margin.left + 50} y2={margin.top + 70} stroke="#f59e0b" strokeWidth={1.5} />
-              <text x={margin.left + 55} y={margin.top + 73} fontSize="9" fill="#374151">
-                MA 10
-              </text>
-              <line x1={margin.left + 10} y1={margin.top + 80} x2={margin.left + 50} y2={margin.top + 80} stroke="#8b5cf6" strokeWidth={1.5} />
-              <text x={margin.left + 55} y={margin.top + 83} fontSize="9" fill="#374151">
-                MA 20
-              </text>
-            </g>
-          )}
+                </g>
+              </>
+            )}
+          </g>
 
 
         </svg>
