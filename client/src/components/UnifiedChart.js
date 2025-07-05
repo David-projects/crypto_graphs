@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   XAxis,
   YAxis,
@@ -11,6 +11,192 @@ import {
 
 const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverages, showMovingAverages, coinSymbol, chartType, chartInterval = '1d' }) => {
   const [tooltip, setTooltip] = useState(null);
+  const [zoomState, setZoomState] = useState({
+    startIndex: 0,
+    endIndex: null,
+    isPanning: false,
+    panStartX: 0,
+    panStartIndex: 0
+  });
+  const svgRef = useRef(null);
+  
+  // Chart dimensions constants
+  const margin = { top: 20, right: 30, bottom: 80, left: 60 };
+
+  // Get the current data based on zoom state
+  const getCurrentData = useCallback(() => {
+    const data = candlestickData || [];
+    if (zoomState.endIndex !== null) {
+      return data.slice(zoomState.startIndex, zoomState.endIndex + 1);
+    }
+    return data;
+  }, [candlestickData, zoomState.startIndex, zoomState.endIndex]);
+
+  // Convert screen coordinates to data index
+  const screenToIndex = useCallback((screenX) => {
+    if (!svgRef.current || !candlestickData) return 0;
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = screenX - rect.left - margin.left;
+    const currentData = getCurrentData();
+    const currentCandleSpacing = (1200 - margin.left - margin.right) / currentData.length;
+    const index = Math.floor(x / currentCandleSpacing);
+    return Math.max(0, Math.min(index, currentData.length - 1));
+  }, [candlestickData, getCurrentData, margin.left, margin.right]);
+
+  // Mouse event handlers for pan only
+  const handleMouseDown = useCallback((e) => {
+    if (e.button === 0 || e.button === 2) { // Left or right click for panning
+      setZoomState(prev => ({
+        ...prev,
+        isPanning: true,
+        panStartX: e.clientX,
+        panStartIndex: zoomState.startIndex
+      }));
+    }
+  }, [zoomState.startIndex]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (zoomState.isPanning) {
+      const deltaX = e.clientX - zoomState.panStartX;
+      const currentData = getCurrentData();
+      const currentCandleSpacing = (1200 - margin.left - margin.right) / currentData.length;
+      const deltaIndex = Math.floor(deltaX / currentCandleSpacing);
+      const newStartIndex = Math.max(0, zoomState.panStartIndex - deltaIndex);
+      const dataLength = candlestickData?.length || 0;
+      const zoomRange = zoomState.endIndex ? zoomState.endIndex - zoomState.startIndex : dataLength - 1;
+      const newEndIndex = Math.min(dataLength - 1, newStartIndex + zoomRange);
+      
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: newStartIndex,
+        endIndex: newEndIndex
+      }));
+    }
+  }, [zoomState, candlestickData, getCurrentData, margin.left, margin.right]);
+
+  const handleMouseUp = useCallback(() => {
+    setZoomState(prev => ({
+      ...prev,
+      isPanning: false
+    }));
+  }, []);
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1; // Less aggressive zoom
+    const dataLength = candlestickData?.length || 0;
+    
+    if (zoomState.endIndex === null) {
+      // Initial zoom - zoom around center
+      const centerIndex = Math.floor(dataLength / 2);
+      const zoomRange = Math.floor(dataLength * 0.5); // Show more data initially
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: Math.max(0, centerIndex - zoomRange),
+        endIndex: Math.min(dataLength - 1, centerIndex + zoomRange)
+      }));
+    } else {
+      // Zoom in/out around center of current view
+      const currentRange = zoomState.endIndex - zoomState.startIndex;
+      const newRange = Math.max(20, Math.floor(currentRange * zoomFactor)); // Minimum 20 data points
+      const centerIndex = Math.floor((zoomState.startIndex + zoomState.endIndex) / 2);
+      const halfRange = Math.floor(newRange / 2);
+      
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: Math.max(0, centerIndex - halfRange),
+        endIndex: Math.min(dataLength - 1, centerIndex + halfRange)
+      }));
+    }
+  }, [zoomState, candlestickData]);
+
+  const resetZoom = useCallback(() => {
+    setZoomState(prev => ({
+      ...prev,
+      startIndex: 0,
+      endIndex: null
+    }));
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    const dataLength = candlestickData?.length || 0;
+    
+    if (zoomState.endIndex === null) {
+      // Initial zoom - zoom around center
+      const centerIndex = Math.floor(dataLength / 2);
+      const zoomRange = Math.floor(dataLength * 0.5);
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: Math.max(0, centerIndex - zoomRange),
+        endIndex: Math.min(dataLength - 1, centerIndex + zoomRange)
+      }));
+    } else {
+      // Zoom in around center of current view
+      const currentRange = zoomState.endIndex - zoomState.startIndex;
+      const newRange = Math.max(20, Math.floor(currentRange * 0.8)); // Zoom in by 20%
+      const centerIndex = Math.floor((zoomState.startIndex + zoomState.endIndex) / 2);
+      const halfRange = Math.floor(newRange / 2);
+      
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: Math.max(0, centerIndex - halfRange),
+        endIndex: Math.min(dataLength - 1, centerIndex + halfRange)
+      }));
+    }
+  }, [zoomState, candlestickData]);
+
+  const zoomOut = useCallback(() => {
+    const dataLength = candlestickData?.length || 0;
+    
+    if (zoomState.endIndex === null) {
+      // Already showing all data
+      return;
+    } else {
+      // Zoom out around center of current view
+      const currentRange = zoomState.endIndex - zoomState.startIndex;
+      const newRange = Math.min(dataLength - 1, Math.floor(currentRange * 1.25)); // Zoom out by 25%
+      const centerIndex = Math.floor((zoomState.startIndex + zoomState.endIndex) / 2);
+      const halfRange = Math.floor(newRange / 2);
+      
+      setZoomState(prev => ({
+        ...prev,
+        startIndex: Math.max(0, centerIndex - halfRange),
+        endIndex: Math.min(dataLength - 1, centerIndex + halfRange)
+      }));
+    }
+  }, [zoomState, candlestickData]);
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape') {
+      resetZoom();
+    } else if (e.key === '+' || e.key === '=') {
+      zoomIn();
+    } else if (e.key === '-') {
+      zoomOut();
+    }
+  }, [resetZoom, zoomIn, zoomOut]);
+
+  // Add event listeners
+  React.useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    svg.addEventListener('mousedown', handleMouseDown);
+    svg.addEventListener('mousemove', handleMouseMove);
+    svg.addEventListener('mouseup', handleMouseUp);
+    svg.addEventListener('wheel', handleWheel);
+    svg.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      svg.removeEventListener('mousedown', handleMouseDown);
+      svg.removeEventListener('mousemove', handleMouseMove);
+      svg.removeEventListener('mouseup', handleMouseUp);
+      svg.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleKeyDown]);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('en-US', {
@@ -93,6 +279,16 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
       );
     }
 
+    // Get current data based on zoom state
+    const currentData = getCurrentData();
+    if (currentData.length === 0) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <p className="text-gray-500">No data in current zoom range</p>
+        </div>
+      );
+    }
+
     // Align moving averages with candlestick data by UTC day
     const alignMovingAverages = () => {
       if (!showMovingAverages || !historicalMovingAverages || historicalMovingAverages.length === 0) {
@@ -111,8 +307,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           maMap.set(dateKey, point.movingAverages);
         });
 
-        // Align moving averages with candlestick data by exact date
-        return candlestickData.map(candle => {
+        // Align moving averages with current candlestick data by exact date
+        return currentData.map(candle => {
           const dateKey = new Date(candle.date).getTime();
           return maMap.get(dateKey) || { 5: null, 9: null, 15: null };
         });
@@ -124,8 +320,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           maMap.set(day, point.movingAverages);
         });
 
-        // Align moving averages with candlestick data
-        return candlestickData.map(candle => {
+        // Align moving averages with current candlestick data
+        return currentData.map(candle => {
           const day = normalizeToUTCDay(candle.date);
           return maMap.get(day) || { 5: null, 9: null, 15: null };
         });
@@ -136,8 +332,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
 
     // Calculate price range for proper scaling
     const priceRange = {
-      min: Math.min(...candlestickData.map(d => d.low)),
-      max: Math.max(...candlestickData.map(d => d.high))
+      min: Math.min(...currentData.map(d => d.low)),
+      max: Math.max(...currentData.map(d => d.high))
     };
 
     // Include moving averages in price range calculation if they should be shown
@@ -159,7 +355,6 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     // Chart dimensions
     const width = 1200; // Increased width for full screen
     const height = 400; // Increased height to accommodate volume
-    const margin = { top: 20, right: 30, bottom: 80, left: 60 }; // Increased bottom margin for volume
     const chartWidth = width - margin.left - margin.right;
     const chartHeight = height - margin.top - margin.bottom;
     
@@ -168,8 +363,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     const priceChartHeight = chartHeight - volumeHeight - 20; // Remaining height for price chart
 
     // Calculate candlestick dimensions
-    const candleWidth = Math.max(2, chartWidth / candlestickData.length * 0.8);
-    const candleSpacing = chartWidth / candlestickData.length;
+    const candleWidth = Math.max(2, chartWidth / currentData.length * 0.8);
+    const candleSpacing = chartWidth / currentData.length;
 
     // Helper function to convert price to Y coordinate
     const priceToY = (price) => {
@@ -184,14 +379,10 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     // Calculate volume range for scaling
     const volumeRange = {
       min: 0,
-      max: Math.max(...candlestickData.map(d => d.volume))
+      max: Math.max(...currentData.map(d => d.volume))
     };
 
-    // Helper function to convert volume to Y coordinate for volume bars
-    const volumeToY = (volume) => {
-      const volumeY = margin.top + priceChartHeight + 20 + volumeHeight;
-      return volumeY - (volume / volumeRange.max) * volumeHeight;
-    };
+
 
     const CustomTooltip = ({ x, y, data }) => {
       if (!data) return null;
@@ -232,8 +423,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     };
 
     return (
-      <div className="h-full overflow-x-auto">
-        <svg width={width} height={height} className="w-full h-full">
+      <div className="h-full overflow-x-auto relative">
+        <svg width={width} height={height} className="w-full h-full" ref={svgRef}>
           {/* Grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
             const y = margin.top + ratio * priceChartHeight;
@@ -262,7 +453,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           })}
 
           {/* Candlesticks */}
-          {candlestickData.map((candle, index) => {
+          {currentData.map((candle, index) => {
             const x = indexToX(index);
             const isGreen = candle.close >= candle.open;
             const bodyTop = priceToY(Math.max(candle.open, candle.close));
@@ -306,7 +497,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
           })}
 
           {/* Volume Bars */}
-          {candlestickData.map((candle, index) => {
+          {currentData.map((candle, index) => {
             const x = indexToX(index);
             const isGreen = candle.close >= candle.open;
             const volumeBarHeight = (candle.volume / volumeRange.max) * volumeHeight;
@@ -407,6 +598,8 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             </>
           )}
 
+
+
           {/* Tooltip */}
           {tooltip && <CustomTooltip {...tooltip} />}
 
@@ -441,7 +634,55 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
               </text>
             </g>
           )}
+
+          {/* Zoom Controls */}
+          <g>
+            <rect
+              x={width - 150}
+              y={margin.top - 15}
+              width={140}
+              height={30}
+              fill="white"
+              stroke="#e5e7eb"
+              strokeWidth={1}
+              rx={4}
+              opacity={0.9}
+            />
+            <text x={width - 145} y={margin.top + 5} fontSize="10" fill="#374151">
+              Pan: Left/Right drag
+            </text>
+            <text x={width - 145} y={margin.top + 18} fontSize="10" fill="#374151">
+              Zoom: +/- buttons | Wheel | Keys: +/-/Esc
+            </text>
+          </g>
         </svg>
+        
+        {/* Zoom Control Buttons */}
+        <div className="absolute top-2 right-2 flex gap-2">
+          <button
+            onClick={zoomOut}
+            className="bg-gray-500 hover:bg-gray-600 text-white w-8 h-8 rounded text-lg font-bold transition-colors flex items-center justify-center"
+            title="Zoom Out (-)"
+          >
+            -
+          </button>
+          <button
+            onClick={zoomIn}
+            className="bg-gray-500 hover:bg-gray-600 text-white w-8 h-8 rounded text-lg font-bold transition-colors flex items-center justify-center"
+            title="Zoom In (+)"
+          >
+            +
+          </button>
+          {zoomState.endIndex !== null && (
+            <button
+              onClick={resetZoom}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+              title="Reset Zoom (Esc)"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
     );
   };
