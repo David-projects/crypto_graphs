@@ -18,6 +18,9 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     panStartX: 0,
     panStartIndex: 0
   });
+  const [trendLines, setTrendLines] = useState([]);
+  const [isDrawingTrendLine, setIsDrawingTrendLine] = useState(false);
+  const [currentTrendLine, setCurrentTrendLine] = useState(null);
   const svgRef = useRef(null);
   
   // Chart dimensions constants
@@ -43,9 +46,90 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     return Math.max(0, Math.min(index, currentData.length - 1));
   }, [candlestickData, getCurrentData, margin.left, margin.right]);
 
-  // Mouse event handlers for pan only
+  // Convert screen coordinates to price
+  const screenToPrice = useCallback((screenX, screenY) => {
+    if (!svgRef.current || !candlestickData) return { index: 0, price: 0 };
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = screenX - rect.left - margin.left;
+    const y = screenY - rect.top - margin.top;
+    
+    const currentData = getCurrentData();
+    const currentCandleSpacing = (1200 - margin.left - margin.right) / currentData.length;
+    const index = Math.floor(x / currentCandleSpacing);
+    const clampedIndex = Math.max(0, Math.min(index, currentData.length - 1));
+    
+    // Calculate price from Y coordinate
+    const priceRange = {
+      min: Math.min(...currentData.map(d => d.low)),
+      max: Math.max(...currentData.map(d => d.high))
+    };
+    const pricePadding = (priceRange.max - priceRange.min) * 0.05;
+    const minPrice = priceRange.min - pricePadding;
+    const maxPrice = priceRange.max + pricePadding;
+    const priceRangeTotal = maxPrice - minPrice;
+    
+    const chartHeight = 400 - margin.top - margin.bottom;
+    const volumeHeight = 80;
+    const priceChartHeight = chartHeight - volumeHeight - 20;
+    
+    const price = maxPrice - (y / priceChartHeight) * priceRangeTotal;
+    
+    return { index: clampedIndex, price: Math.max(minPrice, Math.min(maxPrice, price)) };
+  }, [candlestickData, getCurrentData, margin.left, margin.right, margin.top, margin.bottom]);
+
+  // Trend line functions
+  const startTrendLine = useCallback((e) => {
+    if (e.button === 0 && !zoomState.isPanning) { // Left click only
+      const point = screenToPrice(e.clientX, e.clientY);
+      setIsDrawingTrendLine(true);
+      setCurrentTrendLine({ start: point, end: point });
+    }
+  }, [zoomState.isPanning, screenToPrice]);
+
+  const updateTrendLine = useCallback((e) => {
+    if (isDrawingTrendLine) {
+      const point = screenToPrice(e.clientX, e.clientY);
+      setCurrentTrendLine(prev => prev ? { ...prev, end: point } : null);
+    }
+  }, [isDrawingTrendLine, screenToPrice]);
+
+  const finishTrendLine = useCallback(() => {
+    if (isDrawingTrendLine && currentTrendLine) {
+      const newTrendLine = {
+        id: Date.now(),
+        start: currentTrendLine.start,
+        end: currentTrendLine.end,
+        color: '#ff6b6b',
+        width: 2
+      };
+      setTrendLines(prev => [...prev, newTrendLine]);
+    }
+    setIsDrawingTrendLine(false);
+    setCurrentTrendLine(null);
+  }, [isDrawingTrendLine, currentTrendLine]);
+
+  const deleteTrendLine = useCallback((id) => {
+    setTrendLines(prev => prev.filter(line => line.id !== id));
+  }, []);
+
+  const clearAllTrendLines = useCallback(() => {
+    setTrendLines([]);
+  }, []);
+
+  // Mouse event handlers for pan and trend lines
   const handleMouseDown = useCallback((e) => {
-    if (e.button === 0 || e.button === 2) { // Left or right click for panning
+    if (e.button === 0) { // Left click
+      if (e.ctrlKey || e.metaKey) { // Ctrl/Cmd + click for trend line
+        startTrendLine(e);
+      } else { // Regular left click for panning
+        setZoomState(prev => ({
+          ...prev,
+          isPanning: true,
+          panStartX: e.clientX,
+          panStartIndex: zoomState.startIndex
+        }));
+      }
+    } else if (e.button === 2) { // Right click for panning
       setZoomState(prev => ({
         ...prev,
         isPanning: true,
@@ -53,7 +137,7 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
         panStartIndex: zoomState.startIndex
       }));
     }
-  }, [zoomState.startIndex]);
+  }, [zoomState.startIndex, startTrendLine]);
 
   const handleMouseMove = useCallback((e) => {
     if (zoomState.isPanning) {
@@ -71,15 +155,20 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
         startIndex: newStartIndex,
         endIndex: newEndIndex
       }));
+    } else if (isDrawingTrendLine) {
+      updateTrendLine(e);
     }
-  }, [zoomState, candlestickData, getCurrentData, margin.left, margin.right]);
+  }, [zoomState, candlestickData, getCurrentData, margin.left, margin.right, isDrawingTrendLine, updateTrendLine]);
 
   const handleMouseUp = useCallback(() => {
+    if (isDrawingTrendLine) {
+      finishTrendLine();
+    }
     setZoomState(prev => ({
       ...prev,
       isPanning: false
     }));
-  }, []);
+  }, [isDrawingTrendLine, finishTrendLine]);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -382,8 +471,6 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
       max: Math.max(...currentData.map(d => d.volume))
     };
 
-
-
     const CustomTooltip = ({ x, y, data }) => {
       if (!data) return null;
       
@@ -423,8 +510,63 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
     };
 
     return (
-      <div className="h-full overflow-x-auto relative">
-        <svg width={width} height={height} className="w-full h-full" ref={svgRef}>
+      <div className={`h-full flex flex-col ${isDrawingTrendLine ? 'cursor-crosshair' : ''}`}>
+        {/* Chart Controls - Above Chart */}
+        <div className="flex gap-2 p-2 bg-gray-50 border-b border-gray-200">
+          {/* Zoom Controls */}
+          <div className="flex gap-1 items-center">
+            <span className="text-xs text-gray-600 font-medium mr-1">Zoom:</span>
+            <button
+              onClick={zoomOut}
+              className="bg-gray-500 hover:bg-gray-600 text-white w-6 h-6 rounded text-sm font-bold transition-colors flex items-center justify-center"
+              title="Zoom Out (-)"
+            >
+              -
+            </button>
+            <button
+              onClick={zoomIn}
+              className="bg-gray-500 hover:bg-gray-600 text-white w-6 h-6 rounded text-sm font-bold transition-colors flex items-center justify-center"
+              title="Zoom In (+)"
+            >
+              +
+            </button>
+            {zoomState.endIndex !== null && (
+              <button
+                onClick={resetZoom}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                title="Reset Zoom (Esc)"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Trend Line Controls */}
+          <div className="flex gap-2 items-center">
+            <div className="bg-white border border-gray-300 rounded px-2 py-1 shadow-sm">
+              <span className="text-xs text-gray-600 font-medium">Trend Lines:</span>
+              <span className="text-xs text-gray-500 ml-1">Ctrl + drag to draw</span>
+            </div>
+            <button
+              onClick={clearAllTrendLines}
+              className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+              title="Clear All Trend Lines"
+            >
+              Clear Lines
+            </button>
+            {trendLines.length > 0 && (
+              <div className="bg-green-100 border border-green-300 rounded px-2 py-1">
+                <span className="text-xs text-green-700 font-medium">
+                  {trendLines.length} line{trendLines.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Chart Area */}
+        <div className="flex-1 overflow-x-auto">
+          <svg width={width} height={height} className="w-full h-full" ref={svgRef}>
           {/* Grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
             const y = margin.top + ratio * priceChartHeight;
@@ -598,7 +740,72 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
             </>
           )}
 
+          {/* Trend Lines */}
+          {trendLines.map((line) => {
+            const startX = indexToX(line.start.index);
+            const startY = priceToY(line.start.price);
+            const endX = indexToX(line.end.index);
+            const endY = priceToY(line.end.price);
+            
+            return (
+              <g key={line.id}>
+                <line
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke={line.color}
+                  strokeWidth={line.width}
+                  strokeDasharray="5,5"
+                  opacity={0.8}
+                />
+                <circle
+                  cx={startX}
+                  cy={startY}
+                  r={4}
+                  fill={line.color}
+                  opacity={0.8}
+                />
+                <circle
+                  cx={endX}
+                  cy={endY}
+                  r={4}
+                  fill={line.color}
+                  opacity={0.8}
+                />
+              </g>
+            );
+          })}
 
+          {/* Current Trend Line Being Drawn */}
+          {currentTrendLine && (
+            <g>
+              <line
+                x1={indexToX(currentTrendLine.start.index)}
+                y1={priceToY(currentTrendLine.start.price)}
+                x2={indexToX(currentTrendLine.end.index)}
+                y2={priceToY(currentTrendLine.end.price)}
+                stroke="#ff6b6b"
+                strokeWidth={2}
+                strokeDasharray="5,5"
+                opacity={0.6}
+              />
+              <circle
+                cx={indexToX(currentTrendLine.start.index)}
+                cy={priceToY(currentTrendLine.start.price)}
+                r={4}
+                fill="#ff6b6b"
+                opacity={0.8}
+              />
+              <circle
+                cx={indexToX(currentTrendLine.end.index)}
+                cy={priceToY(currentTrendLine.end.price)}
+                r={4}
+                fill="#ff6b6b"
+                opacity={0.8}
+              />
+            </g>
+          )}
 
           {/* Tooltip */}
           {tooltip && <CustomTooltip {...tooltip} />}
@@ -649,39 +856,13 @@ const UnifiedChart = ({ historicalData, candlestickData, historicalMovingAverage
               opacity={0.9}
             />
             <text x={width - 145} y={margin.top + 5} fontSize="10" fill="#374151">
-              Pan: Left/Right drag
+              Pan: Left/Right drag | Trend: Ctrl+drag
             </text>
             <text x={width - 145} y={margin.top + 18} fontSize="10" fill="#374151">
               Zoom: +/- buttons | Wheel | Keys: +/-/Esc
             </text>
           </g>
         </svg>
-        
-        {/* Zoom Control Buttons */}
-        <div className="absolute top-2 right-2 flex gap-2">
-          <button
-            onClick={zoomOut}
-            className="bg-gray-500 hover:bg-gray-600 text-white w-8 h-8 rounded text-lg font-bold transition-colors flex items-center justify-center"
-            title="Zoom Out (-)"
-          >
-            -
-          </button>
-          <button
-            onClick={zoomIn}
-            className="bg-gray-500 hover:bg-gray-600 text-white w-8 h-8 rounded text-lg font-bold transition-colors flex items-center justify-center"
-            title="Zoom In (+)"
-          >
-            +
-          </button>
-          {zoomState.endIndex !== null && (
-            <button
-              onClick={resetZoom}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
-              title="Reset Zoom (Esc)"
-            >
-              Reset
-            </button>
-          )}
         </div>
       </div>
     );
